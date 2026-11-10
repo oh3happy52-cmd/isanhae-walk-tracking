@@ -114,21 +114,24 @@ class _UserCourseDetailScreenState extends State<UserCourseDetailScreen> {
         .collection('walk_courses')
         .doc(widget.courseId);
 
+    // 좋아요 문서와 카운트를 한 번에(batch) 반영하고,
+    // 카운트는 화면 값(_likeCount)이 아닌 서버 값 기준으로 증감(FieldValue.increment)
+    // → 여러 명이 동시에 눌러도 누락되지 않음
+    final batch = FirebaseFirestore.instance.batch();
     if (_isLiked) {
-      await likeRef.delete();
-      await courseRef.update({'like_count': _likeCount - 1});
-      setState(() {
-        _isLiked = false;
-        _likeCount--;
-      });
+      batch.delete(likeRef);
+      batch.update(courseRef, {'like_count': FieldValue.increment(-1)});
     } else {
-      await likeRef.set({'uid': _uid, 'liked_at': FieldValue.serverTimestamp()});
-      await courseRef.update({'like_count': _likeCount + 1});
-      setState(() {
-        _isLiked = true;
-        _likeCount++;
-      });
+      batch.set(likeRef, {'uid': _uid, 'liked_at': FieldValue.serverTimestamp()});
+      batch.update(courseRef, {'like_count': FieldValue.increment(1)});
     }
+    await batch.commit();
+
+    if (!mounted) return;
+    setState(() {
+      _isLiked = !_isLiked;
+      _likeCount += _isLiked ? 1 : -1;
+    });
   }
 
   Future<void> _submitComment() async {
